@@ -11,6 +11,13 @@ public class ShoppingCart{
      * Container for added items
      */
     private List<Item> items = new ArrayList<Item>();
+    private static final NumberFormat MONEY;
+
+    static {
+        DecimalFormatSymbols symbols = new DecimalFormatSymbols();
+        symbols.setDecimalSeparator('.');
+        MONEY = new DecimalFormat("$#.00", symbols);
+    }
 
     /**
      * Tests all class methods.
@@ -33,18 +40,21 @@ public class ShoppingCart{
      *
      * @throws IllegalArgumentException if some value is wrong
      */
-    public void addItem(String title, double price, int quantity, ItemType type){
+    public void addItem(String title, double price, int quantity, ItemType type) {
         if (title == null || title.length() == 0 || title.length() > 32)
             throw new IllegalArgumentException("Illegal title");
+
         if (price < 0.01)
             throw new IllegalArgumentException("Illegal price");
+
         if (quantity <= 0)
             throw new IllegalArgumentException("Illegal quantity");
+
         Item item = new Item();
-        item.title  = title;
-        item.price  = price;
-        item.quantity = quantity;
-        item.type = type;
+        item.setTitle(title);
+        item.setPrice(price);
+        item.setQuantity(quantity);
+        item.setItemType(type);
         items.add(item);
     }
 
@@ -62,85 +72,91 @@ public class ShoppingCart{
      *    last line: 31                              $999050.60
      * if no items in cart returns "No items." string.
      */
-    public String formatTicket(){
-        if (items.size() == 0)
+    public String formatTicket() {
+        if (items.isEmpty()) {
             return "No items.";
-        List<String[]> lines = new ArrayList<String[]>();
-        String[] header = {"#","Item","Price","Quan.","Discount","Total"};
+        }
+
+        String[] header = { "#", "Item", "Price", "Quan.", "Discount", "Total" };
         int[] align = new int[] { 1, -1, 1, 1, 1, 1 };
-        // formatting each line
-        double total = 0.00;
-        int  index = 0;
-        for (Item item : items) {
-            int discount = calculateDiscount(item.type, item.quantity);
-            double itemTotal = item.price * item.quantity * (100.00 - discount) / 100.00;
-            lines.add(new String[]{
-                    String.valueOf(++index),
-                    item.title,
-                    MONEY.format(item.price),
-                    String.valueOf(item.quantity),
-                    (discount == 0) ? "-" : (String.valueOf(discount) + "%"),
-                    MONEY.format(itemTotal)
-            });
-            total += itemTotal;
-        }
-        String[] footer = { String.valueOf(index),"","","","",
-                MONEY.format(total) };
-        // formatting table
-        // column max length
-        int[] width = new int[]{0,0,0,0,0,0};
-        for (String[] line : lines)
-            for (int i = 0; i < line.length; i++)
-                width[i] = (int) Math.max(width[i], line[i].length());
-        for (int i = 0; i < header.length; i++)
-            width[i] = (int) Math.max(width[i], header[i].length());
-        for (int i = 0; i < footer.length; i++)
-            width[i] = (int) Math.max(width[i], footer[i].length());
 
-        // line length
+        List<String[]> lines = convertItemsToTableLines();
+
+        double total = calculateTotal(lines);
+
+        String[] footer = {
+                String.valueOf(lines.size()), "", "", "", "", MONEY.format(total)
+        };
+
+        int[] width = new int[]{0, 0, 0, 0, 0, 0};
+        adjustColumnWidth(width, lines);
+        adjustColumnWidth(width, header);
+        adjustColumnWidth(width, footer);
+
         int lineLength = width.length - 1;
-        for (int w : width)
-            lineLength += w;
+        for (int w : width) lineLength += w;
+
         StringBuilder sb = new StringBuilder();
+        appendFormattedLine(sb, header, align, width, true);
+        appendSeparator(sb, lineLength);
 
-        // header
-        for (int i = 0; i < header.length; i++)
-            appendFormatted(sb, header[i], align[i], width[i]);
-        sb.append("\n");
-
-        // separator
-        for (int i = 0; i < lineLength; i++)
-            sb.append("-");
-        sb.append("\n");
-
-        // lines
         for (String[] line : lines) {
-            for (int i = 0; i < line.length; i++)
-                appendFormatted(sb, line[i], align[i], width[i]);
-            sb.append("\n");
+            appendFormattedLine(sb, line, align, width, false);
+            appendSeparator(sb, lineLength);
         }
 
-        if (lines.size() > 0) {
-            // separator
-            for (int i = 0; i < lineLength; i++)
-                sb.append("-");
-            sb.append("\n");
-        }
-
-
-        // footer
-        for (int i = 0; i < footer.length; i++)
-            appendFormatted(sb, footer[i], align[i], width[i]);
+        appendFormattedLine(sb, footer, align, width, false);
         return sb.toString();
     }
 
-    // --- private section -----------------------------------------------------
-    private static final NumberFormat MONEY;
-    static {
-        DecimalFormatSymbols symbols = new DecimalFormatSymbols();
-        symbols.setDecimalSeparator('.');
-        MONEY = new DecimalFormat("$#.00", symbols);
+    private List<String[]> convertItemsToTableLines() {
+        List<String[]> lines = new ArrayList<>();
+        int index = 0;
+        for (Item item : items) {
+            int discount = calculateDiscount(item.getItemType(), item.getQuantity());
+            double itemTotal = item.getPrice() * item.getQuantity() * (100.00 - discount) / 100.00;
 
+            lines.add(new String[]{
+                    String.valueOf(++index),
+                    item.getTitle(),
+                    MONEY.format(item.getPrice()),
+                    String.valueOf(item.getQuantity()),
+                    (discount == 0) ? "-" : (discount + "%"),
+                    MONEY.format(itemTotal)
+            });
+        }
+        return lines;
+    }
+
+    private double calculateTotal(List<String[]> lines) {
+        double total = 0.00;
+        for (String[] line : lines) {
+            total += Double.parseDouble(line[5].replace("$", ""));
+        }
+        return total;
+    }
+
+    private void adjustColumnWidth(int[] width, List<String[]> lines) {
+        for (String[] line : lines)
+            adjustColumnWidth(width, line);
+    }
+
+    private void adjustColumnWidth(int[] width, String[] columns) {
+        for (int i = 0; i < width.length; i++)
+            width[i] = Math.max(width[i], columns[i].length());
+    }
+
+    private void appendSeparator(StringBuilder sb, int lineLength) {
+        for (int i = 0; i < lineLength; i++)
+            sb.append("-");
+        sb.append("\n");
+    }
+
+    private void appendFormattedLine(StringBuilder sb, String[] line, int[] align, int[] width, boolean newLine) {
+        for (int i = 0; i < line.length; i++) {
+            appendFormatted(sb, line[i], align[i], width[i]);
+        }
+        if (newLine) sb.append("\n");
     }
 
     /** Appends to sb formatted value.
@@ -194,11 +210,42 @@ public class ShoppingCart{
         return discount;
     }
 
-    /** item info */
     private static class Item {
-        String title;
-        double price;
-        int quantity;
-        ItemType type;
+        private String title;
+        private double price;
+        private int quantity;
+        private ItemType type;
+
+        public String getTitle() {
+            return title;
+        }
+
+        public void setTitle(String title) {
+            this.title = title;
+        }
+
+        public double getPrice() {
+            return price;
+        }
+
+        public void setPrice(double price) {
+            this.price = price;
+        }
+
+        public int getQuantity() {
+            return quantity;
+        }
+
+        public void setQuantity(int quantity) {
+            this.quantity = quantity;
+        }
+
+        public ItemType getItemType() {
+            return type;
+        }
+
+        public void setItemType(ItemType type) {
+            this.type = type;
+        }
     }
 }
